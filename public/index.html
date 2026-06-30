@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Assistente DETRAN-PA</title>
+  <meta name="description" content="Tire dúvidas sobre habilitação, veículos, multas e licenciamento no Pará." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app" role="main">
+    <!-- Cabeçalho institucional -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F6F4EF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+            <circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="eyebrow">Departamento de Trânsito do Pará</span>
+          <span class="title">Assistente DETRAN-PA</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="open-docs" class="ghost-btn" title="Documentos e formulários">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          Documentos
+        </button>
+        <button id="reset" class="ghost-btn hidden" title="Nova conversa">↺ Nova conversa</button>
+      </div>
+    </header>
+
+    <!-- Conversa -->
+    <section id="scroll" class="scroll" aria-live="polite">
+      <div id="empty" class="empty">
+        <h2>Olá! Como posso ajudar no seu serviço de trânsito?</h2>
+        <p>Tire dúvidas sobre habilitação (CNH), veículos, multas e licenciamento no Pará. Comece por uma das perguntas abaixo:</p>
+        <div id="suggestions" class="suggestions"></div>
+        <button id="empty-docs" class="docs-cta">
+          <span class="docs-cta-icon">📄</span>
+          <span>
+            <strong>Preencher um documento</strong>
+            <small>Procuração, comunicação de venda, intenção de venda e mais — com ajuda guiada.</small>
+          </span>
+          <span class="docs-cta-arrow">→</span>
+        </button>
+        <div class="channels">
+          <a href="https://www.detran.pa.gov.br" target="_blank" rel="noopener noreferrer">↗ Portal DETRAN-PA</a>
+          <a href="https://cidadao.detran.pa.gov.br" target="_blank" rel="noopener noreferrer">↗ Portal Venus (multas)</a>
+          <a href="https://app.sefa.pa.gov.br/consulta-ipva" target="_blank" rel="noopener noreferrer">↗ IPVA (SEFA-PA)</a>
+        </div>
+      </div>
+      <div id="thread" class="thread"></div>
+    </section>
+
+    <!-- Entrada -->
+    <footer class="composer">
+      <div id="error" class="error hidden"></div>
+      <div class="inputrow">
+        <textarea id="input" rows="1" placeholder="Pergunte sobre CNH, veículos, multas, licenciamento…"></textarea>
+        <button id="send" aria-label="Enviar pergunta">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+          </svg>
+        </button>
+      </div>
+      <p class="disclaimer">Informativo — confirme valores e prazos no portal oficial ou no Call Center 154. Não substitui o atendimento do DETRAN-PA.</p>
+    </footer>
+  </main>
+
+  <!-- Painel de Documentos (overlay) -->
+  <div id="docs-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="docs-title">
+    <div class="overlay-card">
+      <header class="overlay-head">
+        <button id="docs-back" class="icon-btn hidden" title="Voltar">←</button>
+        <h3 id="docs-title">Documentos e formulários</h3>
+        <button id="docs-close" class="icon-btn" title="Fechar">✕</button>
+      </header>
+      <div id="docs-body" class="overlay-body"><!-- preenchido via JS --></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
