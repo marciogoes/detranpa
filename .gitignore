@@ -3,3 +3,6 @@ node_modules/
 .env.local
 *.log
 .DS_Store
+
+# Dados locais da Sala do Tutor (em produção use o Vercel KV / Upstash)
+data/

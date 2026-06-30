@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sala do Tutor — Assistente DETRAN-PA</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .tutor-wrap { max-width: 880px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; background: var(--paper); border-left: 1px solid var(--paper-edge); border-right: 1px solid var(--paper-edge); }
+    .tutor-main { flex: 1; overflow-y: auto; padding: 20px; }
+    .t-card { background: var(--surface); border: 1px solid var(--paper-edge); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    .t-card h3 { margin: 0 0 4px; font-size: 15px; color: #1B2D26; }
+    .t-card .sub { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 14px; }
+    .t-label { display: block; font-size: 12px; color: var(--ink-soft); margin: 12px 0 5px; }
+    .t-input, .t-textarea { width: 100%; padding: 11px 13px; font-size: 14px; font-family: inherit; border: 1px solid #D9D4C8; border-radius: 10px; background: #fff; color: var(--ink); outline: none; }
+    .t-input:focus, .t-textarea:focus { border-color: var(--moss-pale); }
+    .t-textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+    .t-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .t-btn { cursor: pointer; border: 0; border-radius: 10px; font-size: 13.5px; font-weight: 600; padding: 11px 16px; display: inline-flex; align-items: center; gap: 7px; }
+    .t-btn.primary { background: var(--moss); color: #fff; }
+    .t-btn.primary:hover { filter: brightness(1.05); }
+    .t-btn.primary:disabled { opacity: .5; cursor: default; }
+    .t-btn.soft { background: var(--chip); color: #2A3A33; }
+    .t-btn.soft:hover { background: #E6DFD2; }
+    .t-btn.danger { background: #F4E4DC; color: #9A4B1B; padding: 7px 11px; font-size: 12px; }
+    .t-btn.danger:hover { background: #EED6C9; }
+    .t-hint { font-size: 11.5px; color: #7A8A82; margin-top: 6px; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 5px 10px; border-radius: 999px; font-weight: 600; }
+    .badge.ok { background: #E4F1EB; color: var(--moss-deep); }
+    .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .entry { border: 1px solid var(--paper-edge); border-radius: 11px; padding: 13px 14px; margin-top: 10px; background: #fff; }
+    .entry h4 { margin: 0; font-size: 14px; color: #1B2D26; }
+    .entry .body { font-size: 13px; color: #2C3A34; white-space: pre-wrap; margin: 7px 0 0; line-height: 1.5; }
+    .entry .meta { font-size: 11px; color: #8A988F; margin-top: 9px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .entry .meta .spacer { flex: 1; }
+    .empty-list { font-size: 13px; color: var(--ink-soft); padding: 12px 0; }
+    .t-msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; margin-top: 10px; }
+    .t-msg.err { background: var(--warn-bg); color: var(--warn-ink); }
+    .t-msg.ok { background: #E4F1EB; color: var(--moss-deep); }
+    .test-q { display: flex; gap: 8px; }
+    .test-q .t-input { flex: 1; }
+    .test-answer { margin-top: 12px; background: #F3F6F4; border: 1px solid #E2E8E4; border-radius: 11px; padding: 13px 15px; font-size: 13.5px; line-height: 1.55; color: #182620; white-space: pre-wrap; }
+    .login-box { max-width: 380px; margin: 14vh auto 0; }
+    .login-box .logo-big { width: 54px; height: 54px; border-radius: 14px; background: var(--moss); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="tutor-wrap">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">🎓</div>
+        <div class="brand-text">
+          <span class="eyebrow">Assistente DETRAN-PA</span>
+          <span class="title">Sala do Tutor</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a href="/" class="ghost-btn" title="Ir para o chat">← Ir para o chat</a>
+        <button id="logout" class="ghost-btn hidden">Sair</button>
+      </div>
+    </header>
+
+    <main class="tutor-main">
+      <!-- LOGIN -->
+      <div id="login" class="login-box">
+        <div class="t-card">
+          <div class="logo-big">🎓</div>
+          <h3 class="center">Entrar na Sala do Tutor</h3>
+          <p class="sub center">Aqui você ensina o assistente. Tudo que você escrever vira conhecimento usado nas respostas — na hora.</p>
+          <label class="t-label" for="pwd">Senha do tutor</label>
+          <input id="pwd" class="t-input" type="password" placeholder="Digite a senha" />
+          <div id="login-msg"></div>
+          <div class="t-row" style="margin-top:12px">
+            <button id="enter" class="t-btn primary">Entrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAINEL -->
+      <div id="panel" class="hidden">
+        <div id="storage-banner"></div>
+
+        <div class="t-card">
+          <h3>✍️ Ensinar algo novo</h3>
+          <p class="sub">Escreva como você explicaria para um colega. O assistente passa a usar isso nas respostas imediatamente.</p>
+          <label class="t-label" for="t-title">Título (assunto)</label>
+          <input id="t-title" class="t-input" type="text" placeholder="Ex.: Horário especial de atendimento no fim de ano" />
+          <label class="t-label" for="t-content">Conteúdo</label>
+          <textarea id="t-content" class="t-textarea" placeholder="Ex.: Entre 20/12 e 02/01 o atendimento presencial funciona só das 9h às 12h. Os serviços online continuam normais."></textarea>
+          <div class="t-hint"><span id="char-count">0</span>/8000 caracteres</div>
+          <div id="add-msg"></div>
+          <div class="t-row" style="margin-top:12px">
+            <button id="save" class="t-btn primary">Salvar conhecimento</button>
+          </div>
+        </div>
+
+        <div class="t-card">
+          <h3>🧪 Testar o assistente</h3>
+          <p class="sub">Faça uma pergunta para conferir se o que você ensinou já está sendo usado.</p>
+          <div class="test-q">
+            <input id="test-input" class="t-input" type="text" placeholder="Ex.: Qual o horário de atendimento no fim de ano?" />
+            <button id="test-send" class="t-btn soft">Perguntar</button>
+          </div>
+          <div id="test-answer"></div>
+        </div>
+
+        <div class="t-card">
+          <h3>📚 O que você já ensinou</h3>
+          <p class="sub" id="list-count">Carregando…</p>
+          <div id="list"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="tutor.js"></script>
+</body>
+</html>

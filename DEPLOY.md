@@ -1,62 +1,69 @@
 # Publicar no Vercel
 
-Este projeto já está pronto para o Vercel: o backend roda como função serverless
-(`api/index.js`) e a interface (`public/`) é servida pela CDN. O arquivo
-`vercel.json` cuida do roteamento.
+O backend roda como função serverless (`api/index.js`) e a interface (`public/`)
+é servida pela CDN. O `vercel.json` cuida do roteamento.
 
-## Antes de tudo: a chave da API
+## Variáveis de ambiente (Project → Settings → Environment Variables)
 
-A chave da Anthropic **não vai para o Git** (o `.env` está no `.gitignore`).
-No Vercel, ela é configurada como **variável de ambiente**. Como a chave antiga
-já foi exposta, gere uma nova em https://console.anthropic.com/settings/keys.
-
-Variáveis a configurar no Vercel (Project → Settings → Environment Variables):
-
-| Nome | Obrigatória | Exemplo |
+| Nome | Obrigatória | Para quê |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Sim | `sk-ant-...` |
-| `ANTHROPIC_MODEL` | Não | `claude-sonnet-4-6` |
-| `MAX_TOKENS` | Não | `2048` |
+| `ANTHROPIC_API_KEY` | Sim | Chave da Anthropic (`sk-ant-...`). Gere uma nova em https://console.anthropic.com/settings/keys |
+| `ANTHROPIC_MODEL` | Não | Modelo (padrão `claude-sonnet-4-6`). |
+| `MAX_TOKENS` | Não | Tamanho máx. da resposta (padrão `2048`). |
+| `TUTOR_PASSWORD` | Para a Sala do Tutor | Senha que a pessoa tutora usa para entrar em `/tutor`. Use uma senha forte. |
+| `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Para salvar o que o tutor ensina | Criadas automaticamente ao conectar o armazenamento (passo abaixo). |
 
-(Não defina `PORT` no Vercel — só é usada localmente.)
+(Não defina `PORT` no Vercel — só vale localmente.)
 
-## Caminho A — pelo site do Vercel (mais fácil)
+## Publicar (site do Vercel)
 
-1. Suba o projeto para um repositório no GitHub (sem o `.env`).
-2. Em https://vercel.com, clique em **Add New → Project** e importe o repositório.
-3. Em **Framework Preset**, deixe **Other** (não é Next.js).
-4. Antes de concluir, em **Environment Variables**, adicione `ANTHROPIC_API_KEY`
-   (e as opcionais acima).
-5. Clique em **Deploy**. Ao final, o Vercel dá uma URL pública (ex.:
-   `https://detranpa.vercel.app`).
+1. Suba o projeto no GitHub (já está em github.com/marciogoes/detranpa).
+2. Em https://vercel.com → **Add New → Project** → importe o repositório.
+3. **Framework Preset:** deixe **Other**.
+4. Em **Environment Variables**, adicione pelo menos `ANTHROPIC_API_KEY` e, se for usar
+   a Sala do Tutor, `TUTOR_PASSWORD`.
+5. **Deploy**. No fim, o Vercel dá a URL pública (ex.: `https://detranpa.vercel.app`).
 
-A cada `git push`, o Vercel publica a nova versão automaticamente.
+A cada `git push`, o Vercel republica sozinho.
 
-## Caminho B — pela linha de comando (Vercel CLI)
+## Sala do Tutor
 
-```bash
-npm i -g vercel        # instala a CLI (uma vez)
-vercel login           # entra na sua conta
-vercel                 # primeira publicação (responda às perguntas)
-# defina a chave (repita para preview/production se quiser):
-vercel env add ANTHROPIC_API_KEY
-vercel --prod          # publica em produção
-```
+- Endereço: **`SUA-URL/tutor`** (ex.: `https://detranpa.vercel.app/tutor`).
+- A pessoa entra com a `TUTOR_PASSWORD`. Tudo que ela escreve (título + conteúdo)
+  vira conhecimento que o assistente passa a usar **na hora**, sem republicar.
+- Há um "Testar o assistente" dentro da própria sala para conferir.
 
-## Rodar localmente (continua igual)
+### Memória permanente (para o que o tutor ensina não se perder)
+
+No Vercel, os arquivos são somente leitura, então o conhecimento do tutor precisa
+de um banco. É grátis e rápido de ligar:
+
+1. No painel do projeto no Vercel, vá em **Storage → Create Database**.
+2. Escolha a opção **Upstash (Redis/KV)** e crie. Conecte ao projeto.
+3. O Vercel adiciona sozinho as variáveis `KV_REST_API_URL` e `KV_REST_API_TOKEN`.
+4. Faça um **Redeploy** (Deployments → ⋯ → Redeploy) para o app enxergar as variáveis.
+
+Pronto: a Sala do Tutor mostra "Memória permanente (KV) ativada" e tudo fica salvo.
+> Sem esse passo, a tutora consegue testar, mas o "salvar" fica bloqueado no Vercel
+> (o app avisa na tela).
+
+## Rodar localmente
 
 ```bash
 npm install
-npm start              # http://localhost:3000
+# no .env, defina ANTHROPIC_API_KEY e (opcional) TUTOR_PASSWORD
+npm start            # http://localhost:3000  e  http://localhost:3000/tutor
 ```
+
+Localmente, o que o tutor ensina é salvo no arquivo `data/tutor-knowledge.json`
+(esse arquivo está no `.gitignore` e não vai para o GitHub).
 
 ## Observações
 
-- **Atualizar a base de conhecimento ou os documentos:** edite os arquivos em
-  `knowledge/` ou `forms-data.js`, faça commit/push (ou `vercel --prod`).
-- **Limite de requisições:** o controle por IP é em memória. No Vercel
-  (serverless), cada instância tem a sua contagem, então ele serve só como
-  barreira leve. Para produção de verdade, considere um limitador externo
-  e um teto de gastos no console da Anthropic.
-- **Custo:** cada pergunta no chat consome a API da Anthropic (paga). A consulta
-  e o preenchimento de documentos NÃO usam a API — rodam no navegador.
+- **Atualizar a base fixa:** edite `knowledge/*.md` ou `forms-data.js` e dê `git push`.
+- **Conhecimento do tutor:** é dinâmico, fica no banco; não precisa de deploy.
+- **Custo:** cada pergunta no chat (inclusive o "testar" da sala) usa a API paga da
+  Anthropic. Consulta e preenchimento de documentos NÃO usam a API. Defina um teto
+  de gastos no console da Anthropic.
+- **Segurança:** a senha do tutor protege a área administrativa; use uma senha forte
+  e troque-a se vazar (basta mudar `TUTOR_PASSWORD` no Vercel e redeployar).

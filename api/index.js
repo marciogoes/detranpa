@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Aplicação Express do Assistente DETRAN-PA.
 //
-// Este arquivo monta o app e o EXPORTA (sem "ouvir" uma porta), para que possa
-// rodar tanto localmente (server.js chama app.listen) quanto no Vercel
-// (que usa este export como função serverless).
+// Roda local (server.js chama app.listen) e no Vercel (export default = função).
+// A chave da Anthropic vive só no servidor. O navegador fala apenas com /api/*.
 //
-// A chave da Anthropic vive só no servidor (variável de ambiente). O navegador
-// fala apenas com /api/*.
+// Inclui a "Sala do Tutor": conhecimento ensinado por uma pessoa autorizada,
+// guardado de forma permanente (store.js) e injetado no assistente em tempo real.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "dotenv/config";
@@ -15,27 +14,25 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { FORMS, FORM_INDEX } from "../forms-data.js";
+import { storageMode, listEntries, addEntry, updateEntry, deleteEntry, knowledgeText } from "../store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, ".."); // raiz do projeto (api/ fica um nível abaixo)
+const ROOT = join(__dirname, "..");
 
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 const MAX_TOKENS = Number(process.env.MAX_TOKENS || 2048);
+const TUTOR_PASSWORD = process.env.TUTOR_PASSWORD || "";
 
-// Limites de proteção (em memória; em serverless servem de barreira leve)
 const MAX_MESSAGES = 24;
 const MAX_CHARS_PER_MSG = 4000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 20;
 
-// ── Base de conhecimento (pasta /knowledge) ─────────────────────────────────
+// ── Base de conhecimento estática (pasta /knowledge) ────────────────────────
 function carregarBaseConhecimento() {
   const dir = join(ROOT, "knowledge");
-  if (!existsSync(dir)) {
-    console.warn("[aviso] Pasta /knowledge não encontrada.");
-    return "";
-  }
+  if (!existsSync(dir)) { console.warn("[aviso] Pasta /knowledge não encontrada."); return ""; }
   const arquivos = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
   return arquivos
     .map((f) => `\n\n===== ARQUIVO: ${f} =====\n\n${readFileSync(join(dir, f), "utf8")}`)
@@ -72,7 +69,7 @@ COMO RESPONDER (linguagem simples e detalhada):
 5. Anuncie boas práticas de cuidado: se algo tem prazo curto ou risco de multa, destaque isso de forma clara.
 
 REGRAS DE CONTEÚDO (não podem ser quebradas):
-6. Baseie-se EXCLUSIVAMENTE na BASE DE CONHECIMENTO abaixo. NÃO invente taxas, prazos, documentos ou links. Se algo não estiver na base, diga com sinceridade que não tem essa informação específica e oriente a confirmar no portal https://www.detran.pa.gov.br ou pelo telefone 154.
+6. Baseie-se EXCLUSIVAMENTE na BASE DE CONHECIMENTO abaixo (incluindo o que o Tutor ensinou). NÃO invente taxas, prazos, documentos ou links. Se algo não estiver na base, diga com sinceridade que não tem essa informação específica e oriente a confirmar no portal https://www.detran.pa.gov.br ou pelo telefone 154.
 7. Valores de taxas são apenas uma REFERÊNCIA — explique que o valor exato é o que aparece no boleto/DAE gerado no site oficial.
 8. Encaminhe para o lugar certo:
    - IPVA, DPVAT e impostos do veículo NÃO são com o DETRAN, e sim com a SEFA-PA (Secretaria da Fazenda). Site: app.sefa.pa.gov.br/consulta-ipva — Telefone: 0800-725-5533.
@@ -88,12 +85,22 @@ ${LISTA_FORMS}
 BASE DE CONHECIMENTO:
 ${BASE_CONHECIMENTO}`;
 
+// Junta a base estática com o conhecimento ensinado pelo Tutor (buscado ao vivo).
+function buildSystem(tutorTexto) {
+  if (tutorTexto && tutorTexto.trim()) {
+    return `${SYSTEM_PROMPT}
+
+===== CONHECIMENTO ADICIONADO PELO TUTOR =====
+(Use com a mesma confiança da base oficial. Se contradisser a base oficial, prefira o que o Tutor ensinou, pois é mais recente.)
+
+${tutorTexto}`;
+  }
+  return SYSTEM_PROMPT;
+}
+
 // ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json({ limit: "256kb" }));
-
-// Servir os arquivos estáticos (usado localmente; no Vercel o /public é servido
-// direto pela CDN, então esta linha praticamente não é acionada lá).
 app.use(express.static(join(ROOT, "public")));
 
 const hits = new Map();
@@ -106,24 +113,85 @@ function rateLimited(ip) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, model: MODEL, keyConfigured: Boolean(API_KEY) });
+  res.json({ ok: true, model: MODEL, keyConfigured: Boolean(API_KEY), tutor: Boolean(TUTOR_PASSWORD), storage: storageMode() });
 });
 
-app.get("/api/forms", (_req, res) => {
-  res.json({ forms: FORM_INDEX });
-});
-
+// ── Catálogo de documentos preenchíveis ─────────────────────────────────────
+app.get("/api/forms", (_req, res) => res.json({ forms: FORM_INDEX }));
 app.get("/api/forms/:id", (req, res) => {
   const form = FORMS.find((f) => f.id === req.params.id);
   if (!form) return res.status(404).json({ error: "Documento não encontrado." });
   res.json({ form });
 });
 
+// ── Sala do Tutor ───────────────────────────────────────────────────────────
+function tutorAuth(req, res, next) {
+  if (!TUTOR_PASSWORD) {
+    return res.status(503).json({ error: "A Sala do Tutor está desativada. Defina TUTOR_PASSWORD nas variáveis de ambiente." });
+  }
+  const key = req.headers["x-tutor-key"];
+  if (!key || key !== TUTOR_PASSWORD) {
+    return res.status(401).json({ error: "Senha do tutor incorreta." });
+  }
+  next();
+}
+function persistError(res, err) {
+  if (err && err.message === "PERSIST_NONE") {
+    return res.status(503).json({ error: "Para salvar de forma permanente no Vercel, configure o armazenamento (Vercel KV / Upstash). Veja o DEPLOY.md." });
+  }
+  console.error("[tutor]", err);
+  return res.status(500).json({ error: "Não foi possível salvar agora. Tente novamente." });
+}
+
+app.get("/api/tutor/status", (_req, res) => {
+  res.json({ enabled: Boolean(TUTOR_PASSWORD), storage: storageMode() });
+});
+
+app.post("/api/tutor/auth", (req, res) => {
+  if (!TUTOR_PASSWORD) return res.status(503).json({ error: "A Sala do Tutor está desativada. Defina TUTOR_PASSWORD nas variáveis de ambiente." });
+  const { key } = req.body || {};
+  if (key && key === TUTOR_PASSWORD) return res.json({ ok: true, storage: storageMode() });
+  return res.status(401).json({ error: "Senha incorreta." });
+});
+
+app.get("/api/tutor/entries", tutorAuth, async (_req, res) => {
+  try { res.json({ entries: await listEntries(), storage: storageMode() }); }
+  catch (err) { persistError(res, err); }
+});
+
+app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
+  const { title, content } = req.body || {};
+  if (!title || !content || !String(title).trim() || !String(content).trim()) {
+    return res.status(400).json({ error: "Informe o título e o conteúdo." });
+  }
+  if (String(content).length > 8000) {
+    return res.status(400).json({ error: "Conteúdo muito longo (máximo de 8000 caracteres)." });
+  }
+  try { res.json({ entry: await addEntry({ title, content }) }); }
+  catch (err) { persistError(res, err); }
+});
+
+app.put("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
+  const { title, content } = req.body || {};
+  try {
+    const e = await updateEntry(req.params.id, { title, content });
+    if (!e) return res.status(404).json({ error: "Item não encontrado." });
+    res.json({ entry: e });
+  } catch (err) { persistError(res, err); }
+});
+
+app.delete("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
+  try {
+    const ok = await deleteEntry(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Item não encontrado." });
+    res.json({ ok: true });
+  } catch (err) { persistError(res, err); }
+});
+
+// ── Chat ────────────────────────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   if (!API_KEY) {
-    return res.status(500).json({
-      error: "Servidor sem ANTHROPIC_API_KEY configurada. Defina a chave nas variáveis de ambiente.",
-    });
+    return res.status(500).json({ error: "Servidor sem ANTHROPIC_API_KEY configurada. Defina a chave nas variáveis de ambiente." });
   }
 
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "anon";
@@ -144,15 +212,15 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ error: "A última mensagem deve ser do usuário." });
   }
 
+  // Conhecimento do tutor, buscado ao vivo (para refletir o que foi ensinado agora)
+  let tutorTexto = "";
+  try { tutorTexto = await knowledgeText(); } catch (e) { /* segue sem o tutor se falhar */ }
+
   try {
     const resposta = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system: SYSTEM_PROMPT, messages }),
+      headers: { "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system: buildSystem(tutorTexto), messages }),
     });
 
     if (!resposta.ok) {
@@ -162,12 +230,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const data = await resposta.json();
-    const texto = (data.content || [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-
+    const texto = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
     res.json({ reply: texto || "Não consegui gerar uma resposta. Pode reformular a pergunta?" });
   } catch (err) {
     console.error("[erro]", err);
@@ -176,4 +239,5 @@ app.post("/api/chat", async (req, res) => {
 });
 
 export default app;
-export { MODEL, FORMS };
+export { MODEL, FORMS, TUTOR_PASSWORD };
+export { storageMode };
