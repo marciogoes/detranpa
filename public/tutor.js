@@ -1,24 +1,31 @@
-// Sala do Tutor — ensina o assistente em tempo real.
-// A senha é guardada só durante a sessão do navegador e enviada no cabeçalho
-// x-tutor-key. Toda a validação é feita no servidor.
+// Sala do Tutor — ensina o assistente em tempo real (texto digitado ou documento).
+// A extração do texto dos arquivos acontece no próprio navegador.
 
 const $ = (id) => document.getElementById(id);
 let tutorKey = sessionStorage.getItem("tutorKey") || "";
+let pendingSource = "texto"; // "texto" ou "documento"
 
 const el = {
   login: $("login"), panel: $("panel"), pwd: $("pwd"), enter: $("enter"),
   loginMsg: $("login-msg"), logout: $("logout"),
   title: $("t-title"), content: $("t-content"), charCount: $("char-count"),
-  save: $("save"), addMsg: $("add-msg"),
+  save: $("save"), clear: $("clear"), addMsg: $("add-msg"),
   list: $("list"), listCount: $("list-count"), banner: $("storage-banner"),
   testInput: $("test-input"), testSend: $("test-send"), testAnswer: $("test-answer"),
+  file: $("file"), pickFile: $("pick-file"), upStatus: $("up-status"),
 };
+
+const MAX_CHARS = 15000;
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function msg(target, text, type) {
   target.innerHTML = text ? `<div class="t-msg ${type}">${escapeHtml(text)}</div>` : "";
+}
+function setUp(text, type) {
+  el.upStatus.className = "up-status" + (type ? " " + type : "");
+  el.upStatus.textContent = text || "";
 }
 function fmtDate(ts) {
   if (!ts) return "";
@@ -45,8 +52,7 @@ async function login() {
   const { ok, data } = await api("/api/tutor/auth", { method: "POST", body: JSON.stringify({ key }) });
   el.enter.disabled = false;
   if (!ok) { msg(el.loginMsg, data.error || "Não foi possível entrar.", "err"); return; }
-  tutorKey = key;
-  sessionStorage.setItem("tutorKey", key);
+  tutorKey = key; sessionStorage.setItem("tutorKey", key);
   showPanel(data.storage);
 }
 
@@ -73,20 +79,103 @@ function renderBanner(storage) {
   }
 }
 
-/* ── Salvar conhecimento ── */
+/* ── Envio de documento (extração no navegador) ── */
+el.pickFile.onclick = () => el.file.click();
+el.file.onchange = async () => {
+  const file = el.file.files && el.file.files[0];
+  if (!file) return;
+  const nome = file.name;
+  setUp(`Extraindo o texto de "${nome}"…`, "busy");
+  el.pickFile.disabled = true;
+  try {
+    let texto = await extractText(file);
+    texto = limparTexto(texto);
+    if (!texto) throw new Error("Não encontrei texto neste arquivo. Se for um PDF digitalizado (imagem), o texto precisa ser digitado.");
+    let aviso = "";
+    if (texto.length > MAX_CHARS) {
+      texto = texto.slice(0, MAX_CHARS);
+      aviso = " (o documento é grande; mantive o começo — revise e corte o que não for essencial)";
+    }
+    el.title.value = tituloDoArquivo(nome);
+    el.content.value = texto;
+    el.charCount.textContent = texto.length;
+    pendingSource = "documento";
+    setUp(`Pronto! Texto de "${nome}" carregado abaixo${aviso}. Revise e clique em Salvar.`, "");
+    el.content.scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (e) {
+    setUp(e.message || "Não consegui ler este arquivo. Tente PDF, Word (.docx), TXT ou cole o texto manualmente.", "err");
+  } finally {
+    el.pickFile.disabled = false;
+    el.file.value = ""; // permite reenviar o mesmo arquivo
+  }
+};
+
+function tituloDoArquivo(nome) {
+  return nome.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 120);
+}
+function limparTexto(t) {
+  return String(t || "").replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+let mammothPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error("Falha ao carregar componente de leitura."));
+    document.head.appendChild(s);
+  });
+}
+
+async function extractText(file) {
+  const nome = file.name.toLowerCase();
+  if (nome.endsWith(".txt") || nome.endsWith(".md")) {
+    return await file.text();
+  }
+  if (nome.endsWith(".pdf")) {
+    const pdfjs = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs";
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: buf }).promise;
+    let out = "";
+    const limite = Math.min(pdf.numPages, 60);
+    for (let i = 1; i <= limite; i++) {
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      out += tc.items.map((it) => it.str).join(" ") + "\n\n";
+      if (out.length > MAX_CHARS + 2000) break;
+    }
+    return out;
+  }
+  if (nome.endsWith(".docx")) {
+    if (!mammothPromise) mammothPromise = loadScript("https://cdn.jsdelivr.net/npm/mammoth@1/mammoth.browser.min.js");
+    await mammothPromise;
+    const buf = await file.arrayBuffer();
+    const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return (result && result.value) || "";
+  }
+  throw new Error("Formato não suportado. Envie PDF, Word (.docx), TXT ou Markdown.");
+}
+
+/* ── Salvar / limpar ── */
 el.content.addEventListener("input", () => { el.charCount.textContent = el.content.value.length; });
 el.save.onclick = salvar;
+el.clear.onclick = () => {
+  el.title.value = ""; el.content.value = ""; el.charCount.textContent = "0";
+  pendingSource = "texto"; setUp("", ""); msg(el.addMsg, "", "");
+};
 
 async function salvar() {
   const title = el.title.value.trim();
   const content = el.content.value.trim();
-  if (!title || !content) { msg(el.addMsg, "Preencha o título e o conteúdo.", "err"); return; }
+  if (!title || !content) { msg(el.addMsg, "Preencha o título e o conteúdo (ou envie um documento).", "err"); return; }
+  if (content.length > MAX_CHARS) { msg(el.addMsg, `O conteúdo passou de ${MAX_CHARS} caracteres. Corte um pouco antes de salvar.`, "err"); return; }
   el.save.disabled = true;
-  const { ok, data } = await api("/api/tutor/entries", { method: "POST", body: JSON.stringify({ title, content }) });
+  const { ok, data } = await api("/api/tutor/entries", { method: "POST", body: JSON.stringify({ title, content, source: pendingSource }) });
   el.save.disabled = false;
   if (!ok) { msg(el.addMsg, data.error || "Não foi possível salvar.", "err"); return; }
   msg(el.addMsg, "Conhecimento salvo! O assistente já está usando.", "ok");
   el.title.value = ""; el.content.value = ""; el.charCount.textContent = "0";
+  pendingSource = "texto"; setUp("", "");
   setTimeout(() => msg(el.addMsg, "", ""), 3000);
   loadEntries();
 }
@@ -94,17 +183,14 @@ async function salvar() {
 /* ── Lista ── */
 async function loadEntries() {
   const { ok, data } = await api("/api/tutor/entries");
-  if (!ok) {
-    if (data.error) el.listCount.textContent = data.error;
-    return;
-  }
+  if (!ok) { if (data.error) el.listCount.textContent = data.error; return; }
   const entries = data.entries || [];
   el.listCount.textContent = entries.length
     ? `${entries.length} ${entries.length === 1 ? "item ensinado" : "itens ensinados"}.`
     : "Você ainda não ensinou nada. Comece pelo campo acima.";
   el.list.innerHTML = entries.map((e) => `
     <div class="entry" data-id="${e.id}">
-      <h4>${escapeHtml(e.title)}</h4>
+      <h4>${escapeHtml(e.title)} ${e.source === "documento" ? '<span class="tag-doc">📄 documento</span>' : ""}</h4>
       <div class="body">${escapeHtml(e.content)}</div>
       <div class="meta">
         <span>Atualizado em ${fmtDate(e.updatedAt)}</span>
@@ -112,9 +198,7 @@ async function loadEntries() {
         <button class="t-btn danger" data-del="${e.id}">Remover</button>
       </div>
     </div>`).join("");
-  el.list.querySelectorAll("[data-del]").forEach((b) => {
-    b.onclick = () => remover(b.getAttribute("data-del"));
-  });
+  el.list.querySelectorAll("[data-del]").forEach((b) => { b.onclick = () => remover(b.getAttribute("data-del")); });
 }
 
 async function remover(id) {
@@ -143,12 +227,10 @@ async function testar() {
     else { el.testAnswer.innerHTML = `<div class="test-answer">${escapeHtml(data.reply || "")}</div>`; }
   } catch (e) {
     el.testAnswer.innerHTML = `<div class="t-msg err">Não foi possível conectar ao servidor.</div>`;
-  } finally {
-    el.testSend.disabled = false;
-  }
+  } finally { el.testSend.disabled = false; }
 }
 
-/* ── Início: se já tem senha na sessão, tenta abrir direto ── */
+/* ── Início ── */
 (async function init() {
   const status = await api("/api/tutor/status");
   if (status.ok && !status.data.enabled) {

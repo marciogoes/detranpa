@@ -1,14 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Armazenamento do conhecimento ensinado pelo Tutor.
 //
-// Funciona em dois modos, escolhidos automaticamente:
-//   • "kv"   — Vercel KV / Upstash Redis (via REST). Usado quando há as variáveis
-//              KV_REST_API_URL + KV_REST_API_TOKEN (ou UPSTASH_REDIS_REST_URL/TOKEN).
-//              É o modo PERMANENTE recomendado para produção (Vercel).
+// Modos (escolhidos automaticamente):
+//   • "kv"   — Vercel KV / Upstash Redis (REST). Permanente, recomendado p/ produção.
 //   • "file" — arquivo local data/tutor-knowledge.json. Usado no seu PC.
-//   • "none" — rodando no Vercel SEM KV configurado: leitura funciona (se houver
-//              arquivo commitado), mas gravar é bloqueado (sistema de arquivos
-//              somente leitura). Nesse caso o app avisa para configurar o KV.
+//   • "none" — Vercel sem KV: leitura ok, gravar bloqueado (fs somente leitura).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -47,7 +43,6 @@ async function readAll() {
     const raw = await kv(["GET", KV_KEY]);
     return raw ? JSON.parse(raw) : [];
   }
-  // file ou none: tenta ler o arquivo local (se existir)
   if (existsSync(FILE)) {
     try { return JSON.parse(readFileSync(FILE, "utf8")); } catch { return []; }
   }
@@ -74,10 +69,17 @@ export async function listEntries() {
   return all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
-export async function addEntry({ title, content }) {
+export async function addEntry({ title, content, source }) {
   const entries = await readAll();
   const now = Date.now();
-  const entry = { id: genId(), title: String(title).trim(), content: String(content).trim(), createdAt: now, updatedAt: now };
+  const entry = {
+    id: genId(),
+    title: String(title).trim(),
+    content: String(content).trim(),
+    source: source ? String(source) : "texto", // "texto" ou "documento"
+    createdAt: now,
+    updatedAt: now,
+  };
   entries.push(entry);
   await writeAll(entries);
   return entry;

@@ -4,8 +4,9 @@
 // Roda local (server.js chama app.listen) e no Vercel (export default = função).
 // A chave da Anthropic vive só no servidor. O navegador fala apenas com /api/*.
 //
-// Inclui a "Sala do Tutor": conhecimento ensinado por uma pessoa autorizada,
-// guardado de forma permanente (store.js) e injetado no assistente em tempo real.
+// Inclui a "Sala do Tutor": conhecimento ensinado por uma pessoa autorizada
+// (texto digitado OU documento enviado), guardado de forma permanente (store.js)
+// e injetado no assistente em tempo real.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "dotenv/config";
@@ -26,6 +27,7 @@ const TUTOR_PASSWORD = process.env.TUTOR_PASSWORD || "";
 
 const MAX_MESSAGES = 24;
 const MAX_CHARS_PER_MSG = 4000;
+const MAX_ENTRY_CHARS = 15000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 20;
 
@@ -108,7 +110,7 @@ ${tutorTexto}`;
 
 // ── App ─────────────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json({ limit: "256kb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static(join(ROOT, "public")));
 
 const hits = new Map();
@@ -168,19 +170,22 @@ app.get("/api/tutor/entries", tutorAuth, async (_req, res) => {
 });
 
 app.post("/api/tutor/entries", tutorAuth, async (req, res) => {
-  const { title, content } = req.body || {};
+  const { title, content, source } = req.body || {};
   if (!title || !content || !String(title).trim() || !String(content).trim()) {
     return res.status(400).json({ error: "Informe o título e o conteúdo." });
   }
-  if (String(content).length > 8000) {
-    return res.status(400).json({ error: "Conteúdo muito longo (máximo de 8000 caracteres)." });
+  if (String(content).length > MAX_ENTRY_CHARS) {
+    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS} caracteres). Resuma ou divida em partes.` });
   }
-  try { res.json({ entry: await addEntry({ title, content }) }); }
+  try { res.json({ entry: await addEntry({ title, content, source }) }); }
   catch (err) { persistError(res, err); }
 });
 
 app.put("/api/tutor/entries/:id", tutorAuth, async (req, res) => {
   const { title, content } = req.body || {};
+  if (content != null && String(content).length > MAX_ENTRY_CHARS) {
+    return res.status(400).json({ error: `Conteúdo muito longo (máximo de ${MAX_ENTRY_CHARS} caracteres).` });
+  }
   try {
     const e = await updateEntry(req.params.id, { title, content });
     if (!e) return res.status(404).json({ error: "Item não encontrado." });

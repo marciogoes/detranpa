@@ -27,13 +27,25 @@
     .t-hint { font-size: 11.5px; color: #7A8A82; margin-top: 6px; }
     .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 5px 10px; border-radius: 999px; font-weight: 600; }
     .badge.ok { background: #E4F1EB; color: var(--moss-deep); }
-    .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .tag-doc { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: var(--moss-deep); background: #E4F1EB; padding: 3px 8px; border-radius: 999px; }
+    .upload-zone {
+      border: 1.5px dashed #C4CDBE; border-radius: 12px; padding: 14px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      background: #FAFBF8; margin-bottom: 6px;
+    }
+    .upload-zone .uz-icon { font-size: 22px; }
+    .upload-zone .uz-text { flex: 1; min-width: 160px; }
+    .upload-zone .uz-text strong { font-size: 13px; color: #1B2D26; display: block; }
+    .upload-zone .uz-text small { font-size: 11.5px; color: var(--ink-soft); }
+    .up-status { font-size: 12px; margin-top: 8px; }
+    .up-status.busy { color: var(--moss-deep); }
+    .up-status.err { color: var(--warn-ink); }
+    .or-divider { text-align: center; font-size: 11px; color: #9AA8A1; text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 4px; }
     .entry { border: 1px solid var(--paper-edge); border-radius: 11px; padding: 13px 14px; margin-top: 10px; background: #fff; }
-    .entry h4 { margin: 0; font-size: 14px; color: #1B2D26; }
-    .entry .body { font-size: 13px; color: #2C3A34; white-space: pre-wrap; margin: 7px 0 0; line-height: 1.5; }
+    .entry h4 { margin: 0; font-size: 14px; color: #1B2D26; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .entry .body { font-size: 13px; color: #2C3A34; white-space: pre-wrap; margin: 7px 0 0; line-height: 1.5; max-height: 160px; overflow: auto; }
     .entry .meta { font-size: 11px; color: #8A988F; margin-top: 9px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .entry .meta .spacer { flex: 1; }
-    .empty-list { font-size: 13px; color: var(--ink-soft); padding: 12px 0; }
     .t-msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; margin-top: 10px; }
     .t-msg.err { background: var(--warn-bg); color: var(--warn-ink); }
     .t-msg.ok { background: #E4F1EB; color: var(--moss-deep); }
@@ -67,7 +79,7 @@
         <div class="t-card">
           <div class="logo-big">🎓</div>
           <h3 class="center">Entrar na Sala do Tutor</h3>
-          <p class="sub center">Aqui você ensina o assistente. Tudo que você escrever vira conhecimento usado nas respostas — na hora.</p>
+          <p class="sub center">Aqui você ensina o assistente. Tudo que você escrever ou enviar vira conhecimento usado nas respostas — na hora.</p>
           <label class="t-label" for="pwd">Senha do tutor</label>
           <input id="pwd" class="t-input" type="password" placeholder="Digite a senha" />
           <div id="login-msg"></div>
@@ -83,15 +95,31 @@
 
         <div class="t-card">
           <h3>✍️ Ensinar algo novo</h3>
-          <p class="sub">Escreva como você explicaria para um colega. O assistente passa a usar isso nas respostas imediatamente.</p>
+          <p class="sub">Envie um documento OU escreva você mesmo. O assistente passa a usar isso nas respostas imediatamente.</p>
+
+          <!-- Envio de documento -->
+          <div class="upload-zone">
+            <span class="uz-icon">📎</span>
+            <span class="uz-text">
+              <strong>Enviar um documento</strong>
+              <small>PDF, Word (.docx), TXT ou Markdown — eu extraio o texto pra você revisar.</small>
+            </span>
+            <input id="file" type="file" accept=".pdf,.txt,.md,.docx" hidden />
+            <button type="button" class="t-btn soft" id="pick-file">Escolher arquivo</button>
+          </div>
+          <div id="up-status" class="up-status"></div>
+
+          <div class="or-divider">— ou escreva —</div>
+
           <label class="t-label" for="t-title">Título (assunto)</label>
           <input id="t-title" class="t-input" type="text" placeholder="Ex.: Horário especial de atendimento no fim de ano" />
           <label class="t-label" for="t-content">Conteúdo</label>
           <textarea id="t-content" class="t-textarea" placeholder="Ex.: Entre 20/12 e 02/01 o atendimento presencial funciona só das 9h às 12h. Os serviços online continuam normais."></textarea>
-          <div class="t-hint"><span id="char-count">0</span>/8000 caracteres</div>
+          <div class="t-hint"><span id="char-count">0</span>/15000 caracteres</div>
           <div id="add-msg"></div>
           <div class="t-row" style="margin-top:12px">
             <button id="save" class="t-btn primary">Salvar conhecimento</button>
+            <button id="clear" class="t-btn soft">Limpar</button>
           </div>
         </div>
 
